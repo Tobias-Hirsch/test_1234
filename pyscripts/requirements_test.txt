@@ -1,0 +1,5 @@
+requests
+pymongo
+minio
+python-dotenv
+urllib3

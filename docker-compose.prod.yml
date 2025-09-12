@@ -1,0 +1,110 @@
+services:
+  backend:
+    env_file:
+      - .env.prod
+    environment:
+      # Point to two separate cache directories inside the container.
+      - MODELSCOPE_CACHE=/modelscope_cache
+      - HUGGINGFACE_HUB_CACHE=/huggingface_cache
+      # Force HuggingFace Hub to run in offline mode, preventing any network calls.
+      - HF_HUB_OFFLINE=1
+    volumes:
+      # Mount the host's ModelScope cache, which you already have locally.
+      - /home/cjb/.cache/modelscope/hub:/modelscope_cache
+      # Mount the host's HuggingFace cache, which we downloaded successfully.
+      - /home/cjb/.cache/huggingface/hub:/huggingface_cache
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+  mineru-sglang-server:
+    image: mineru-sglang:latest
+    profiles: ["sglang"]
+    ports:
+      - "30001:30000"
+    environment:
+      MINERU_MODEL_SOURCE: local
+    entrypoint: mineru-sglang-server
+    command:
+      --host 0.0.0.0
+      --port 30000
+      --mem-fraction-static 0.5 # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+    shm_size: '32g'
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    networks:
+      - rosti-net
+    restart: unless-stopped
+    cpuset: "20-39,60-79"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # Assigned to GPU 1
+              capabilities: [gpu]
+
+  ollama-embedding:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434" # Expose on a different host port to avoid conflict
+    volumes:
+      - ollama_data:/root/.ollama
+      - /home/cjb/.ollama:/root/.ollama # Mount local models
+    networks:
+      - rosti-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # Assigned to GPU 1
+              capabilities: [gpu]
+
+  ollama-serving:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    networks:
+      - rosti-net
+    restart: unless-stopped
+    cpuset: "0-19,40-59"
+    volumes:
+      - ollama_data:/root/.ollama
+      - /home/cjb/.ollama:/root/.ollama # Mount local models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0'] # Assigned to GPU 0
+              capabilities: [gpu]
+
+  paddleocr:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # Assigned to GPU 1
+              capabilities: [gpu]
+
+  latexocr:
+    image: jlh1024/latexocr-amd64-gpu:latest
+    restart: unless-stopped
+    environment:
+      - DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1'] # Assigned to GPU 0
+              capabilities: [gpu]
+
+

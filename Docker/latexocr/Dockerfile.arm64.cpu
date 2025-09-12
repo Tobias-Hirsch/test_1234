@@ -1,0 +1,52 @@
+# Dockerfile for building the latexocr service for arm64 CPU (Apple Silicon)
+# This uses a multi-stage build to speed up the installation of torch.
+
+# --- Stage 1: Build wheels ---
+# Use a generic arm64 base image to build the dependencies.
+# We specify the platform to ensure we get the correct architecture.
+FROM python:3.10-slim-bookworm AS builder
+
+# Install build tools
+RUN pip install --no-cache-dir wheel
+
+# Create a directory to store the compiled wheels
+WORKDIR /wheels
+
+# Copy the requirements file
+# Note: This should be the requirements file that includes torch, etc.
+COPY requirements.txt .
+
+# Use pip wheel to download and build all dependencies into .whl files.
+# This is the time-consuming step. We use a mirror to speed up downloads.
+# The output will be a set of wheel files in the /wheels directory.
+RUN pip wheel --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# --- Stage 2: Final image ---
+# Start from a clean, lightweight arm64 base image for the final application
+FROM python:3.10-slim-bookworm
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+# Set device to CPU for pix2tex
+ENV DEVICE=cpu
+
+# Create a working directory
+WORKDIR /app
+
+# Copy the pre-built wheels from the builder stage
+COPY --from=builder /wheels /wheels
+
+# Install the application dependencies from the local wheel files.
+# This step is very fast because it avoids network downloads and compilation.
+# --no-index prevents pip from looking at PyPI.
+# --find-links points pip to our local directory of wheels.
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r /wheels/requirements.txt
+
+# Copy the application code
+COPY main.py .
+
+# Expose the port the app runs on
+EXPOSE 8002
+
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

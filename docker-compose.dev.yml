@@ -1,0 +1,55 @@
+# This file contains overrides for local development environments.
+# It is intended to be used explicitly with the -f flag, for example:
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  backend:
+    env_file:
+      - .env.dev
+    volumes:
+      # Mount the local models directory into the container for development mode.
+      # This is necessary because in 'dev' mode, the backend handles embeddings directly.
+      - ./models:/app/models
+      # Mount the entire backend source code for hot-reloading
+      - ./backend:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "debug", "--proxy-headers", "--reload"]
+
+  frontend:
+    volumes:
+      # Mount the entire frontend source code for hot-reloading (HMR)
+      - ./frontend:/app
+      # Prevent node_modules on the host from overwriting the container's node_modules
+      - /app/node_modules
+
+  ollama-serving:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 6G
+    # volumes:
+    #   - /Users/jinglu/.ollama:/root/.ollama # Mount local models for dev environment
+    
+  mineru-sglang-server:
+    # Disable this service in the standard local development environment,
+    # as it requires a dedicated NVIDIA GPU.
+    # The backend will use its "pipeline" mode instead.
+    profiles:
+      - disabled
+
+  paddleocr:
+    # Configuration for Apple Silicon (ARM64) development
+    build:
+      context: ./Docker/paddleocr
+      dockerfile: Dockerfile.arm64
+    platform: linux/arm64
+    environment:
+      - PADDLE_DEVICE=mps
+
+  latexocr:
+    # Configuration for Apple Silicon (ARM64) development
+    build:
+      context: ./Docker/latexocr
+      dockerfile: Dockerfile.arm64.cpu
+    platform: linux/arm64
+    environment:
+      - DEVICE=cpu

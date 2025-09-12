@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pix2tex[api]==0.1.1
+numpy<2.0
+albumentations==1.1.0

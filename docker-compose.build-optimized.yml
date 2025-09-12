@@ -1,0 +1,37 @@
+# 构建优化版docker-compose配置
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.optimized
+      # 启用BuildKit缓存
+      cache_from:
+        - registry.your-company.com/rosti-backend:cache-core
+        - registry.your-company.com/rosti-backend:cache-extras
+        - registry.your-company.com/rosti-backend:latest
+      # 构建参数
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    # 生产环境镜像标签策略  
+    image: registry.your-company.com/rosti-backend:${VERSION:-latest}
+    
+  # 缓存管理服务
+  cache-warmer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.cache-warmer
+      target: core-dependencies
+    image: registry.your-company.com/rosti-backend:cache-core
+    profiles:
+      - cache-build
+
+  extras-cache:
+    build:
+      context: ./backend  
+      dockerfile: Dockerfile.cache-warmer
+      target: variable-dependencies
+    image: registry.your-company.com/rosti-backend:cache-extras
+    profiles:
+      - cache-build

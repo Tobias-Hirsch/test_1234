@@ -1,0 +1,69 @@
+# 优化版Dockerfile - 减少依赖更新时的重构时间
+FROM python:3.12-slim AS base-dependencies
+
+# 1. 系统依赖层 - 很少变化
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        libgl1 \
+        libglib2.0-0 \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 2. 核心稳定依赖层 - 分离基础依赖和可变依赖
+FROM base-dependencies AS core-dependencies
+
+# 复制分离的核心依赖文件
+COPY requirements.core.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.core.txt
+
+# 3. 可变依赖层 - 经常变化的依赖
+FROM core-dependencies AS variable-dependencies
+
+# 复制经常变化的依赖文件
+COPY requirements.extras.txt ./
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.extras.txt
+
+# 4. 应用构建层
+FROM python:3.12-slim AS builder
+
+WORKDIR /usr/src/app
+
+# 安装构建工具
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple wheel setuptools
+
+# 复制构建所需文件
+COPY setup.py requirements.txt ./
+COPY app ./app
+
+# 构建应用wheel包
+RUN python setup.py bdist_wheel
+
+# 5. 最终生产镜像
+FROM variable-dependencies AS final
+
+# 创建非root用户
+RUN addgroup --system app && adduser --system --ingroup app --home /app app
+
+# 创建日志目录
+RUN mkdir -p /app/logs/api_log && chown -R app:app /app/logs
+
+# 复制并安装应用
+COPY --from=builder /usr/src/app/dist/*.whl ./
+RUN pip install --no-cache-dir --no-deps rosti_backend-0.1.0-py3-none-any.whl && \
+    rm rosti_backend-0.1.0-py3-none-any.whl
+
+# 复制Alembic配置
+COPY alembic.ini .
+COPY alembic ./alembic
+
+# 设置权限
+RUN chown -R app:app /app
+ENV HOME=/app
+USER app
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

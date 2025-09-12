@@ -1,0 +1,220 @@
+import logging
+
+logger = logging.getLogger(__name__)
+import asyncio
+import urllib.parse
+from typing import Optional, Dict, Any
+
+from app.core.config import settings
+
+# --- MinerU Library Integration ---
+# Try to import the necessary components from the mineru library.
+# This will fail if 'mineru[core]' is not installed in the backend's environment.
+try:
+    # Import components for both local pipeline and remote VLM processing
+    from mineru.backend.vlm.vlm_analyze import doc_analyze as vlm_doc_analyze
+    from mineru.backend.pipeline.pipeline_analyze import doc_analyze as pipeline_doc_analyze
+    from mineru.backend.pipeline.pipeline_middle_json_mkcontent import union_make as pipeline_union_make
+    from mineru.backend.pipeline.model_json_to_middle_json import result_to_middle_json as pipeline_result_to_middle_json
+    from mineru.utils.enum_class import MakeMode
+    from mineru.backend.vlm.vlm_middle_json_mkcontent import union_make as vlm_union_make
+    from mineru.cli.common import convert_pdf_bytes_to_bytes_by_pypdfium2
+    MINERU_INSTALLED = True
+except ImportError as e:
+    logger.error(f"Failed to import MinerU components: {e}. The MinerU processor will not work.")
+    logger.error("Please ensure 'mineru[core]' is installed in the backend service's Docker image.")
+    MINERU_INSTALLED = False
+
+# --- Processor Implementations ---
+
+class LocalMinerUParser:
+    """
+    A processor that uses the MinerU library's local 'pipeline' backend.
+    This runs the parsing logic directly within the backend service process.
+    """
+    def __init__(self):
+        logger.info("LocalMinerUParser initialized. Using 'pipeline' backend for document processing.")
+        # The global doc_processing_lock from core.state will be used to ensure serial processing.
+
+    def _run_local_processing(self, file_bytes: bytes, filename: str) -> Optional[Dict[str, Any]]:
+        """
+        Synchronous wrapper for the CPU-bound local MinerU processing logic.
+        """
+        if not MINERU_INSTALLED:
+            logger.error("Cannot process document because MinerU library is not installed.")
+            return None
+
+        try:
+            logger.info(f"Starting local MinerU 'pipeline' processing for '{filename}'.")
+            
+            # 1. Standardize byte stream
+            processed_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes)
+
+            # 2. Run local pipeline analysis
+            # Note: pipeline_doc_analyze expects lists
+            infer_results, all_image_lists, all_pdf_docs, lang_list, ocr_enabled_list = pipeline_doc_analyze(
+                [processed_bytes],
+                ['ch'], # lang is a placeholder, auto-detection is used
+                parse_method="auto",
+                formula_enable=True,
+                table_enable=True
+            )
+
+            if not infer_results or not infer_results[0]:
+                logger.error(f"Local MinerU analysis (pipeline_doc_analyze) failed for '{filename}'.")
+                return None
+
+            # 3. Convert model output to the intermediate JSON format
+            middle_json = pipeline_result_to_middle_json(
+                model_list=infer_results[0],
+                images_list=all_image_lists[0],
+                pdf_doc=all_pdf_docs[0],
+                image_writer=None,
+                lang=lang_list[0],
+                ocr_enable=ocr_enabled_list[0]
+            )
+            
+            pdf_info = middle_json.get("pdf_info")
+            if not pdf_info:
+                logger.error(f"Local MinerU analysis failed: 'pdf_info' not found in the result for '{filename}'.")
+                return None
+
+            # 4. Generate the final structured content list
+            content_list = pipeline_union_make(pdf_info, MakeMode.CONTENT_LIST, "")
+            
+            if not content_list:
+                logger.error(f"pipeline_union_make failed to generate a content list for '{filename}'.")
+                return None
+
+            logger.info(f"Successfully generated a content list with {len(content_list)} items for '{filename}' via local pipeline.")
+            return {"result": content_list}
+
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred during local MinerU processing for '{filename}': {e}")
+            return None
+
+    async def process_document_bytes(self, file_bytes: bytes, filename: str, strategy: str = "pipeline") -> Optional[Dict[str, Any]]:
+        """
+        Asynchronously processes a document by running the synchronous local MinerU
+        functions in a separate thread. Concurrency is handled by the global lock.
+        The 'strategy' parameter is accepted for interface consistency but is ignored
+        as this class always uses the 'pipeline' method.
+        """
+        logger.info(f"Starting local processing task for '{filename}'.")
+        try:
+            # Run the synchronous, CPU-bound code in a separate thread
+            result = await asyncio.to_thread(self._run_local_processing, file_bytes, filename)
+            return result
+        finally:
+            logger.info(f"Local processing finished for '{filename}'.")
+
+
+class MinerUClient:
+    """
+    A client that uses the MinerU library to process documents via a remote sglang service.
+    This is used in production environments.
+    """
+    def __init__(self):
+        raw_url = settings.MINERU_SGLANG_SERVER_URL
+        if raw_url:
+            parsed_url = urllib.parse.urlparse(raw_url)
+            self.sglang_server_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            logger.info(f"MinerUClient initialized for remote processing. sglang server base URL: {self.sglang_server_url}")
+        else:
+            self.sglang_server_url = None
+            logger.warning("settings.MINERU_SGLANG_SERVER_URL is not configured. MinerUClient will not be able to connect to the sglang service.")
+        
+        # The global doc_processing_lock from core.state will be used to ensure serial processing.
+
+    def _run_remote_processing(self, file_bytes: bytes, filename: str) -> Optional[Dict[str, Any]]:
+        """
+        Synchronous wrapper for the remote MinerU processing logic. This now only handles the sglang case.
+        """
+        if not MINERU_INSTALLED:
+            logger.error("Cannot process document because MinerU library is not installed.")
+            return None
+
+        try:
+            logger.info(f"Starting remote MinerU processing for '{filename}' using sglang server at {self.sglang_server_url}")
+
+            file_bytes = convert_pdf_bytes_to_bytes_by_pypdfium2(file_bytes)
+
+            middle_json, _ = vlm_doc_analyze(
+                file_bytes,
+                image_writer=None,
+                backend="sglang-client",
+                server_url=self.sglang_server_url
+            )
+
+            pdf_info = middle_json.get("pdf_info")
+            if not pdf_info:
+                logger.error(f"Remote MinerU analysis failed: 'pdf_info' not found in the result for '{filename}'.")
+                return None
+            
+            content_list = vlm_union_make(pdf_info, MakeMode.CONTENT_LIST, "")
+
+            if not content_list:
+                logger.error(f"vlm_union_make failed to generate a content list for '{filename}'.")
+                return None
+
+            logger.info(f"Successfully generated a content list with {len(content_list)} items for '{filename}' via remote server.")
+            return {"result": content_list}
+
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred during remote MinerU processing for '{filename}': {e}")
+            return None
+
+    async def process_document_bytes(self, file_bytes: bytes, filename: str, strategy: str) -> Optional[Dict[str, Any]]:
+        """
+        Asynchronously processes a document by running the synchronous remote MinerU
+        library functions in a separate thread. Concurrency is handled by the global lock.
+        The 'strategy' parameter is accepted for interface consistency but this client
+        will only ever handle the 'sglang' strategy.
+        """
+        if not self.sglang_server_url:
+            logger.error("Cannot process document because MINERU_SGLANG_SERVER_URL is not configured.")
+            return None
+
+        logger.info(f"Starting remote processing task for '{filename}' with strategy '{strategy}'.")
+        try:
+            # The strategy is used by the factory, not here. This method just runs its remote processing.
+            result = await asyncio.to_thread(self._run_remote_processing, file_bytes, filename)
+            return result
+        finally:
+            logger.info(f"Remote processing finished for '{filename}'.")
+
+# --- Singleton Factory ---
+# This allows the same processor instance to be used throughout the application,
+# while deferring the choice of implementation until it's first needed.
+
+_mineru_processor = None
+
+def get_mineru_processor():
+    """
+    Factory function to get the appropriate MinerU processor instance based on settings.
+    This function implements a singleton pattern.
+    """
+    global _mineru_processor
+    if _mineru_processor is None:
+        # The primary determinant is now the PDF_PROCESSING_STRATEGY for dynamic switching.
+        strategy = settings.PDF_PROCESSING_STRATEGY
+        
+        # In production, we might want the 'pipeline' strategy to run locally inside the backend
+        # container, just like in dev, instead of calling a remote service.
+        if strategy == "pipeline":
+            logger.info("PDF_PROCESSING_STRATEGY is 'pipeline'. Forcing creation of LocalMinerUParser.")
+            _mineru_processor = LocalMinerUParser()
+        else:
+            # For 'sglang' or other strategies, we rely on the configured backend client.
+            backend_mode = settings.MINERU_PARSE_BACKEND
+            logger.info(f"PDF_PROCESSING_STRATEGY is '{strategy}'. Creating instance for backend mode: '{backend_mode}'")
+            if backend_mode == "vlm-sglang-client":
+                _mineru_processor = MinerUClient()
+            else:
+                # If MINERU_PARSE_BACKEND is misconfigured but strategy is sglang, it's an issue.
+                # However, we can default to LocalMinerUParser as a safe fallback.
+                logger.error(f"Unsupported or misconfigured MINERU_PARSE_BACKEND: '{backend_mode}' for strategy '{strategy}'. Defaulting to local pipeline.")
+                _mineru_processor = LocalMinerUParser()
+                
+    return _mineru_processor
+

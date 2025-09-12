@@ -1,0 +1,543 @@
+.chat-container {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  font-family: Arial, sans-serif;
+  box-sizing: border-box; /* Include padding in element's total width and height */
+  overflow: hidden; /* Prevent outer scrollbar */
+}
+
+/* Remove sidebar styles as per user's implied request for a centered chat */
+.sidebar {
+  display: none;
+}
+
+/* 聊天区域样式 */
+.chat-area {
+  flex-grow: 1; /* Allow chat area to grow */
+  flex-shrink: 1; /* Allow chat area to shrink */
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  width: 100%; /* Set width to full page width */
+  height: 100%; /* Set height to full available height */
+  border-radius: 0; /* Remove border radius for full window */
+  box-shadow: none; /* Remove shadow for full window */
+  overflow: hidden; /* Hide overflow */
+  margin: 0; /* Remove margins */
+  transition: margin-right 0.3s ease; /* Add transition for smooth movement */
+}
+
+/* 状态指示器样式 */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f0f9ff;
+  border: 1px solid #0ea5e9;
+  border-radius: 0.5rem;
+  margin: 1rem 1rem 0.5rem 1rem;
+  z-index: 10;
+}
+
+.loading-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid #0ea5e9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.status-text {
+  color: #0369a1;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+/* 错误恢复面板样式 */
+.error-recovery-panel {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0.5rem 1rem 1rem 1rem;
+  z-index: 10;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #dc2626;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.error-icon {
+  color: #f59e0b;
+  font-size: 1.125rem;
+}
+
+.recovery-options, .retry-actions {
+  margin-top: 1rem;
+}
+
+.partial-response-preview {
+  margin-bottom: 1rem;
+}
+
+.partial-response-preview h4 {
+  margin: 0 0 0.5rem 0;
+  color: #374151;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.response-preview {
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8rem;
+  max-height: 120px;
+  overflow-y: auto;
+  color: #374151;
+  line-height: 1.4;
+}
+
+.recovery-actions, .retry-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chat-area.sidebar-visible {
+  margin-right: 300px; /* Adjust margin to make space for the sidebar */
+}
+
+.messages-container {
+  flex-grow: 1; /* Allow messages container to grow */
+  padding: 20px;
+  width: 90%; /* Full width of the chat area */
+  overflow-y: auto; /* Enable vertical scrolling */
+  display: flex;
+  flex-direction: column;
+}
+
+.message-bubble {
+  display: flex;
+  align-items: flex-start; /* Align items to the top */
+  margin-bottom: 15px;
+  max-width: 100%; /* Expand bubble width for document-like flow */
+}
+
+.message-bubble.start {
+  align-self: flex-start;
+  flex-direction: row; /* Avatar then content */
+}
+
+.message-bubble.end {
+  align-self: flex-end;
+  flex-direction: row-reverse; /* Content then avatar */
+}
+
+.avatar {
+  flex-shrink: 0; /* Prevent avatar from shrinking */
+  width: 32px; /* Set fixed size */
+  height: 32px; /* Set fixed size */
+  border-radius: 50%; /* Make it round */
+  overflow: hidden; /* Hide overflow for round shape */
+  cursor: pointer; /* Add cursor pointer to indicate clickability */
+}
+
+.message-bubble.start .avatar {
+  margin-right: 12px; /* Gap between avatar and content for bot */
+}
+
+.message-bubble.end .avatar {
+  margin-left: 12px; /* Gap between avatar and content for user */
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Ensure image covers the area */
+}
+
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100% - 44px); /* Adjust max-width to account for avatar and gap (32px + 12px) */
+}
+
+.content {
+  padding: 10px 15px;
+  border-radius: 4px; /* A slight radius for a modern block look */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Add subtle shadow for depth */
+  word-break: break-word;
+  overflow-y: visible; /* Allow content to overflow vertically */
+  max-height: none; /* Remove max-height to show full content */
+}
+
+.message-bubble.start .content {
+  /* Remove bubble-specific styling for a document-flow look */
+  background-color: transparent;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+  border-radius: 0;
+}
+
+.message-bubble.end .content {
+  background-color: #e6f1ff; /* User message background */
+  color: #1a4b8f;
+  
+}
+
+.loading-indicator {
+  margin-top: 5px;
+  font-style: italic;
+  color: #888;
+}
+
+.thinking-process-header {
+  font-size: 0.8em;
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.thinking-process-content {
+  font-size: 0.8em;
+  color: #777;
+  margin-top: 5px;
+  padding: 5px 10px;
+  background-color: #e0e0e0;
+  border-radius: 5px;
+}
+
+.input-area {
+  padding: 20px;
+  border-top: 1px solid #e0e0e0; /* Add border to separate from messages */
+  flex-shrink: 0; /* Prevent input area from shrinking */
+  width: 50%; /* Set input area to 50% width */
+  margin: 0 auto; /* Center input area */
+}
+
+.input-container {
+ margin-bottom: 15px;
+}
+
+:deep(.el-input__wrapper) {
+  background-color: #777777;
+  border-radius: 20px;
+}
+
+:deep(.el-input__inner) {
+  color: white;
+  background-color: #777777;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: #ffffff;
+}
+
+.input-flex {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.attachment-icon {
+  font-size: 22px;
+  width: 24px;
+  height: 24px;
+  color: #ffd700;
+  cursor: pointer;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+.attachment-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.search-switches {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.switch-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.switch-group-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-switch {
+  padding: 6px 16px;
+  border-radius: 16px;
+  background: #f5f5f5;
+  color: #1a4b8f;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+  user-select: none;
+  border: 1px solid #e0e0e0;
+  font-size: 14px;
+}
+
+.search-switch.active {
+  background: #1a4b8f;
+  color: #fff;
+  border: 1px solid #1a4b8f;
+}
+
+.send-btn {
+  min-width: 80px;
+  border-radius: 16px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendbar-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 24px;
+  color: #ffd700;
+  cursor: pointer;
+  vertical-align: middle;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendbar-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.welcome-top {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.welcome-message {
+  font-size: 1.2em;
+  color: #222;
+  font-weight: bold;
+  margin-top: 0;
+}
+
+.textarea-input :deep(.el-textarea__inner) {
+  border: none;
+  outline: none;
+  box-shadow: none;
+  resize: vertical;
+  background: #ffffff;
+  color: #000000;
+}
+
+.textarea-input :deep(.el-textarea__inner::placeholder) {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.dark-mode {
+  background: #1a1a1a !important;
+  color: #cccccc !important;
+}
+.dark-mode .chat-area {
+  background: #1a1a1a !important;
+  color: #cccccc !important;
+}
+/* Remove dark mode sidebar styles */
+.dark-mode .sidebar {
+  display: none;
+}
+.dark-mode .el-input__wrapper,
+.dark-mode .el-input__inner,
+.dark-mode .textarea-input :deep(.el-textarea__inner) {
+  background: #333 !important;
+  color: #fff !important;
+}
+.dark-mode .message-bubble .content {
+  background: #222 !important;
+  color: #fff !important;
+}
+.dark-mode .message-bubble.start .content {
+  /* Ensure document-flow look in dark mode as well */
+  background: transparent !important;
+}
+.dark-mode .message-bubble.end .content {
+  background: #2a3b55 !important;
+  color: #fff !important;
+}
+.dark-mode .thinking-process-header {
+  color: #aaa !important;
+}
+.dark-mode .thinking-process-content {
+  background-color: #444 !important;
+  color: #bbb !important;
+}
+.dark-mode .search-switch {
+  background: #222 !important;
+  color: #fff !important;
+  border-color: #444 !important;
+}
+.dark-mode .search-switch.active {
+  background: #1a4b8f !important;
+  color: #fff !important;
+  border-color: #1a4b8f !important;
+}
+.dark-mode .welcome-message {
+  color: #fff !important;
+}
+
+.selected-files-preview {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.dark-mode .selected-files-preview {
+  background-color: #333;
+  color: #ccc;
+}
+
+.file-tag {
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+/* Source Documents Sidebar Styles */
+.source-documents-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 300px; /* Adjust width as needed */
+  height: 100%;
+  background-color: #f9f9f9;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
+  transform: translateX(300px); /* Initially hidden */
+  transition: transform 0.3s ease; /* Add transition for smooth movement */
+  z-index: 999; /* Ensure it's below the overlay but above chat content */
+  display: flex;
+  flex-direction: column;
+}
+
+.source-documents-sidebar.visible {
+  transform: translateX(0); /* Slide in */
+}
+
+.sidebar-header {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+}
+
+.sidebar-content {
+  padding: 15px;
+  overflow-y: auto; /* Enable scrolling for content */
+  flex-grow: 1;
+}
+
+.sidebar-content h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.sidebar-content ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar-content li {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9em;
+}
+
+.dark-mode .source-documents-sidebar {
+  background-color: #222;
+  color: #ccc;
+}
+
+.dark-mode .sidebar-header {
+  border-bottom-color: #444;
+}
+
+.dark-mode .sidebar-content li {
+  border-bottom-color: #444;
+}
+/* Avatar Selection Dialog Styles */
+.avatar-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.avatar-option {
+  cursor: pointer;
+  transition: transform 0.2s ease-in-out;
+}
+
+.avatar-option:hover {
+  transform: scale(1.1);
+}
+
+/* New styles for message actions */
+.message-actions {
+  display: flex;
+  gap: 8px; /* 按钮之间的间距 */
+  margin-top: 5px; /* 与消息内容的间距 */
+  justify-content: flex-end; /* 靠右对齐 */
+}
+
+.message-bubble.start .message-actions {
+  justify-content: flex-start; /* 机器人消息靠左对齐 */
+}
+
+.action-icon {
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--el-text-color-secondary); /* 使用 Element Plus 的次要文本颜色 */
+  transition: color 0.2s ease;
+}
+
+.action-icon:hover {
+  color: var(--el-color-primary); /* 鼠标悬停时使用主题主色 */
+}

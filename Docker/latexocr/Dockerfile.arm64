@@ -1,0 +1,21 @@
+# Dockerfile for ARM64 architecture (e.g., Apple M1/M2) with CPU-only support.
+
+# 1. Use a standard Python base image compatible with ARM64
+FROM python:3.10-slim-bookworm
+
+# 2. Set up the working directory
+WORKDIR /app
+
+# 3. Copy requirements and install them
+# PyTorch for CPU will be installed automatically on ARM64 architecture.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 4. Copy the application code
+COPY main.py .
+
+# 5. Expose the port the app runs on
+EXPOSE 8002
+
+# 6. Define the command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]

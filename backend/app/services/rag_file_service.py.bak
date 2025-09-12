@@ -1,0 +1,137 @@
+import os
+from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
+from minio import Minio
+from minio.error import S3Error
+from datetime import timedelta
+from pymongo import MongoClient # Import MongoClient
+from app.modules.mongodb_module import get_mongo_client # Import get_mongo_client from mongodb_module
+from ..core.config import settings # Global import
+from app.models.database import FileGist
+from app.schemas import schemas
+
+def get_minio_client() -> Minio:
+    """Initializes and returns a Minio client."""
+    minio_endpoint = settings.MINIO_ENDPOINT
+    minio_access_key = settings.MINIO_ACCESS_KEY
+    minio_secret_key = settings.MINIO_SECRET_KEY
+
+    if not all([minio_endpoint, minio_access_key, minio_secret_key]):
+        raise ValueError("MinIO environment variables (MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY) not set.")
+
+    return Minio(
+        minio_endpoint,
+        access_key=minio_access_key,
+        secret_key=minio_secret_key,
+        secure=False  # Disable SSL for local development, adjust for production
+    )
+
+def get_file_gist_with_download_url(db: Session, file_id: int) -> Optional[schemas.FileGist]:
+    """
+    Retrieves a FileGist by ID and generates a pre-signed MinIO download URL.
+    """
+    file_gist = db.query(FileGist).filter(FileGist.id == file_id).first()
+    if not file_gist:
+        return None
+
+    minio_bucket_name = settings.MINIO_BUCKET_NAME
+    if not minio_bucket_name:
+        print("MINIO_BUCKET_NAME environment variable not set. Cannot generate download URL.")
+        return schemas.FileGist.from_orm(file_gist) # Return without URL
+
+    try:
+        minio_client = get_minio_client()
+        download_url = minio_client.presigned_get_object(
+            minio_bucket_name,
+            file_gist.filename,
+            expires=timedelta(days=7), # URL valid for 7 days
+        )
+        file_gist_schema = schemas.FileGist.from_orm(file_gist)
+        file_gist_schema.download_url = download_url
+        return file_gist_schema
+    except S3Error as e:
+        print(f"MinIO Error generating pre-signed URL for file ID {file_id}: {e}")
+        return schemas.FileGist.from_orm(file_gist) # Return without URL on error
+    except Exception as e:
+        print(f"An unexpected error occurred during MinIO URL generation for file ID {file_id}: {e}")
+        return schemas.FileGist.from_orm(file_gist) # Return without URL on error
+
+
+def get_file_gist_by_filename_and_rag_id(db: Session, filename: str, rag_id: int) -> Optional[schemas.FileGist]:
+    """
+    Retrieves a FileGist by its original filename and associated RAG Data ID,
+    and generates a pre-signed MinIO download URL.
+    """
+    # Query for the file using both filename and rag_data_id for specificity
+    # First, get all file gists for the given rag_id
+    all_gists_for_rag = db.query(FileGist).filter(FileGist.rag_id == rag_id).all()
+
+    # Then, find the one that ends with the desired filename in Python
+    # This is more robust than a LIKE query if there are special character issues.
+    file_gist = None
+    for gist in all_gists_for_rag:
+        if gist.filename.endswith(filename):
+            file_gist = gist
+            break
+
+    if not file_gist:
+        return None
+
+    minio_bucket_name = settings.MINIO_BUCKET_NAME
+    if not minio_bucket_name:
+        print(f"MINIO_BUCKET_NAME not set. Cannot generate download URL for {filename}.")
+        return schemas.FileGist.from_orm(file_gist)
+
+    try:
+        minio_client = get_minio_client()
+        download_url = minio_client.presigned_get_object(
+            minio_bucket_name,
+            file_gist.filename, # The object name in MinIO is the filename
+            expires=timedelta(days=7),
+        )
+        file_gist_schema = schemas.FileGist.from_orm(file_gist)
+        file_gist_schema.download_url = download_url
+        return file_gist_schema
+    except S3Error as e:
+        print(f"MinIO Error generating pre-signed URL for file {filename}: {e}")
+        return schemas.FileGist.from_orm(file_gist)
+    except Exception as e:
+        print(f"An unexpected error occurred during MinIO URL generation for file {filename}: {e}")
+        return schemas.FileGist.from_orm(file_gist)
+def get_file_gists_with_download_urls(db: Session, file_ids: List[int]) -> List[schemas.FileGist]:
+    """
+    Retrieves a list of FileGists by IDs and generates pre-signed MinIO download URLs for each.
+    """
+    file_gists = db.query(FileGist).filter(FileGist.id.in_(file_ids)).all()
+    
+    minio_bucket_name = settings.MINIO_BUCKET_NAME
+    if not minio_bucket_name:
+        print("MINIO_BUCKET_NAME environment variable not set. Cannot generate download URLs.")
+        return [schemas.FileGist.from_orm(fg) for fg in file_gists] # Return without URLs
+
+    try:
+        minio_client = get_minio_client()
+        result_gists = []
+        for file_gist in file_gists:
+            try:
+                download_url = minio_client.presigned_get_object(
+                    minio_bucket_name,
+                    file_gist.filename,
+                    expires=timedelta(days=7),
+                )
+                file_gist_schema = schemas.FileGist.from_orm(file_gist)
+                file_gist_schema.download_url = download_url
+                result_gists.append(file_gist_schema)
+            except S3Error as e:
+                print(f"MinIO Error generating pre-signed URL for file ID {file_gist.id}: {e}")
+                result_gists.append(schemas.FileGist.from_orm(file_gist)) # Add without URL
+            except Exception as e:
+                print(f"An unexpected error occurred during MinIO URL generation for file ID {file_gist.id}: {e}")
+                result_gists.append(schemas.FileGist.from_orm(file_gist)) # Add without URL
+        return result_gists
+    except ValueError as e:
+        print(f"MinIO client initialization error: {e}")
+        return [schemas.FileGist.from_orm(fg) for fg in file_gists] # Return without URLs
+    except Exception as e:
+        print(f"An unexpected error occurred during batch MinIO URL generation: {e}")
+        return [schemas.FileGist.from_orm(fg) for fg in file_gists] # Return without URLs
