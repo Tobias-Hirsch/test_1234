@@ -3,16 +3,12 @@ services:
     env_file:
       - .env.prod
     environment:
-      # Point to two separate cache directories inside the container.
-      - MODELSCOPE_CACHE=/modelscope_cache
-      - HUGGINGFACE_HUB_CACHE=/huggingface_cache
-      # Force HuggingFace Hub to run in offline mode, preventing any network calls.
       - HF_HUB_OFFLINE=1
+      # Pfad INSIDE des Containers:
+      - RERANKER_MODEL_PATH=/models/bge-reranker-large
     volumes:
-      # Mount the host's ModelScope cache, which you already have locally.
-      - /home/cjb/.cache/modelscope/hub:/modelscope_cache
-      # Mount the host's HuggingFace cache, which we downloaded successfully.
-      - /home/cjb/.cache/huggingface/hub:/huggingface_cache
+      # Host-Pfad  →  Container-Pfad (read-only)
+      - /workspace/hirsch/models/bge-reranker-large:/models/bge-reranker-large:ro
     deploy:
       resources:
         limits:
