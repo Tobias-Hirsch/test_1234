@@ -1,14 +1,13 @@
-services:
+sservices:
   backend:
     env_file:
       - .env.prod
     environment:
       - HF_HUB_OFFLINE=1
-      # Pfad INSIDE des Containers:
-      - RERANKER_MODEL_PATH=/models/bge-reranker-large
+      - HUGGINGFACE_HUB_CACHE=/huggingface_cache
     volumes:
-      # Host-Pfad  →  Container-Pfad (read-only)
-      - /workspace/hirsch/models/bge-reranker-large:/models/bge-reranker-large:ro
+      # Dein Ordner → ein "Snapshot" dieser Modell-ID im Container-Cache
+      - /workspace/hirsch/models/bge-reranker-large:/huggingface_cache/models--BAAI--bge-reranker-large/snapshots/local:ro
     deploy:
       resources:
         limits:
