@@ -9,18 +9,22 @@ services:
     volumes:
       # Lokales Modell → einfacher, stabiler Container-Pfad
       - /workspace/hirsch/models/bge-reranker-large:/models/bge-reranker-large:ro
+  
   mineru-sglang-server:
     image: mineru-sglang:latest
-    profiles: ["sglang"]
+    # profiles: ["sglang"]   # ← ENTFERNEN
     ports:
       - "30001:30000"
     environment:
       MINERU_MODEL_SOURCE: local
     entrypoint: mineru-sglang-server
     command:
-      --host 0.0.0.0
-      --port 30000
-      --mem-fraction-static 0.5 # If running on a single GPU and encountering VRAM shortage, reduce the KV cache size by this parameter, if VRAM issues persist, try lowering it further to `0.4` or below.
+      - --host
+      - 0.0.0.0
+      - --port
+      - "30000"
+      - --mem-fraction-static
+      - "0.5"
     shm_size: '32g'
     ipc: host
     ulimits:
@@ -30,69 +34,64 @@ services:
       - rosti-net
     restart: unless-stopped
     cpuset: "20-39,60-79"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['1'] # Assigned to GPU 1
-              capabilities: [gpu]
+    # deploy: ...            # ← ENTFERNEN
+    gpus: "device=1"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
 
   ollama-serving:
     image: ollama/ollama:latest
     ports:
       - "11434:11434"
-    volumes:
-      - /workspace/hirsch/models/ollama:/root/.ollama:ro   # nur EIN Mount!
     networks:
       - rosti-net
     restart: unless-stopped
     cpuset: "0-19,40-59"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['0']
-              capabilities: [gpu]
+    volumes:
+      - /workspace/hirsch/models/ollama:/root/.ollama:ro
+    # deploy: ...            # ← ENTFERNEN
+    gpus: "device=0"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
 
   ollama-embedding:
     image: ollama/ollama:latest
     ports:
-      - "11435:11434"   # eigener Host-Port
-    volumes:
-      - /workspace/hirsch/models/ollama:/root/.ollama:ro
+      - "11435:11434"
     networks:
       - rosti-net
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['1']
-              capabilities: [gpu]
+    volumes:
+      - /workspace/hirsch/models/ollama:/root/.ollama:ro
+    # deploy: ...            # ← ENTFERNEN
+    gpus: "device=1"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
 
   paddleocr:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['1'] # Assigned to GPU 1
-              capabilities: [gpu]
+    # image: <deins> / build: ... (nicht vergessen!)
+    # deploy: ...            # ← ENTFERNEN
+    gpus: "device=1"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
+
 
   latexocr:
     image: jlh1024/latexocr-amd64-gpu:latest
     restart: unless-stopped
     environment:
       - DEVICE=cuda
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['1'] # Assigned to GPU 0
-              capabilities: [gpu]
+      - NVIDIA_VISIBLE_DEVICES=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    # deploy: ...            # ← ENTFERNEN
+    gpus: "device=1"
+
 
 
