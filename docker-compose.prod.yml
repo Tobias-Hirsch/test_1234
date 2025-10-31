@@ -1,19 +1,14 @@
-sservices:
+services:
   backend:
     env_file:
       - .env.prod
     environment:
       - HF_HUB_OFFLINE=1
-      - HUGGINGFACE_HUB_CACHE=/huggingface_cache
+      # Optional – nur wenn du wirklich einen HF-Hub-Cache montierst:
+      # - HUGGINGFACE_HUB_CACHE=/huggingface_cache
     volumes:
-      # Dein Ordner → ein "Snapshot" dieser Modell-ID im Container-Cache
-      - /workspace/hirsch/models/bge-reranker-large:/huggingface_cache/models--BAAI--bge-reranker-large/snapshots/local:ro
-    deploy:
-      resources:
-        limits:
-          memory: 16G
-        reservations:
-          memory: 8G
+      # Lokales Modell → einfacher, stabiler Container-Pfad
+      - /workspace/hirsch/models/bge-reranker-large:/models/bge-reranker-large:ro
   mineru-sglang-server:
     image: mineru-sglang:latest
     profiles: ["sglang"]
